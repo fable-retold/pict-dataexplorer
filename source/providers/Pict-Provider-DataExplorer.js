@@ -4,22 +4,26 @@ const libPictDataExplorerDataProvider = require('./Pict-DataExplorer-DataProvide
 const libPictViewDataExplorer = require('../views/PictView-DataExplorer.js');
 
 /**
- * Derive the text column(s) a tier's filter box searches (server-side substring LK). Single field by
- * default so the clause stays cleanly ANDable with relationship / base filters. The preference mirrors
- * pict-section-recordset's quick-filter default (`_deriveDefaultQuickFilters`): a plain-column Title,
- * then Name, then Title, then the first non-key Lite column.
+ * Derive the text columns a tier's filter box searches (server-side substring LK). ALL non-key Lite
+ * columns are searchable so a user can filter by anything they see — a code, a status, a city — not just
+ * the title (a numeric column's LK simply never matches, which is harmless). The title / name field leads
+ * (it is also the default sort key). The view ORs the clauses in a paren group so the search ANDs cleanly
+ * with relationship / base filters.
  * @param {Record<string, any>} pEntity
  * @return {Array<string>}
  */
 function deriveSearchFields(pEntity)
 {
-	const tmpTitle = pEntity.Display && pEntity.Display.Title;
-	if (tmpTitle && (String(tmpTitle).indexOf('{~') < 0) && (tmpTitle !== pEntity.IDField)) { return [ tmpTitle ]; }
 	const tmpLite = Array.isArray(pEntity.Lite) ? pEntity.Lite : [];
-	if (tmpLite.indexOf('Name') >= 0) { return [ 'Name' ]; }
-	if (tmpLite.indexOf('Title') >= 0) { return [ 'Title' ]; }
-	const tmpFirst = tmpLite.find((pColumn) => !(/^(ID|GUID)/.test(pColumn)));
-	return tmpFirst ? [ tmpFirst ] : [];
+	const tmpSearchable = tmpLite.filter((pColumn) => !(/^(ID|GUID)/.test(pColumn)));
+	if (tmpSearchable.length < 1) { return []; }
+	const tmpTitle = pEntity.Display && pEntity.Display.Title;
+	let tmpPrimary;
+	if (tmpTitle && (String(tmpTitle).indexOf('{~') < 0) && (tmpSearchable.indexOf(tmpTitle) >= 0)) { tmpPrimary = tmpTitle; }
+	else if (tmpSearchable.indexOf('Name') >= 0) { tmpPrimary = 'Name'; }
+	else if (tmpSearchable.indexOf('Title') >= 0) { tmpPrimary = 'Title'; }
+	else { tmpPrimary = tmpSearchable[0]; }
+	return [ tmpPrimary ].concat(tmpSearchable.filter((pColumn) => pColumn !== tmpPrimary));
 }
 
 /** @type {Record<string, any>} */

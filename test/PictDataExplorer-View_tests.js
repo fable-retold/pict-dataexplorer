@@ -214,5 +214,66 @@ suite
 			Expect(tmp.View._recordDescriptor('root:Widget/rec:1', tmp.View._node('root:Widget/rec:1')).ChipsSlot).to.deep.equal([ { Column: 'Code', Value: 'ABC' } ]);
 			tmp.View._setChosenColumns('Widget', []);   // leave storage clean for re-runs
 		});
+
+		test('_filterExpression: one field → a plain FBV LK; many fields → a FOP/FCP OR group', () =>
+		{
+			const tmp = newExplorer();
+			Expect(tmp.View._filterExpression({ UserFilter: 'x', EntityConfig: { SearchFields: [ 'Name' ] } }))
+				.to.equal('FBV~Name~LK~%x%');
+			Expect(tmp.View._filterExpression({ UserFilter: '350', EntityConfig: { SearchFields: [ 'Name', 'MaterialCode', 'MixID' ] } }))
+				.to.equal('FOP~~(~~FBV~Name~LK~%350%~FBVOR~MaterialCode~LK~%350%~FBVOR~MixID~LK~%350%~FCP~~)~');
+		});
+
+		test('multi-Lite entities get multi-field SearchFields (name first), single-Lite stays single', () =>
+		{
+			const tmpConfig =
+			{
+				Roots: [ { Entity: 'MixDesign' } ],
+				Entities: { MixDesign: { Lite: [ 'Name', 'MaterialCode', 'MixID', 'GUIDMixDesign', 'IDCustomer' ], Display: { Title: 'Name' } } },
+			};
+			const tmp = newExplorer(tmpConfig);
+			Expect(tmp.View.explorerConfig.Entities.MixDesign.SearchFields).to.deep.equal([ 'Name', 'MaterialCode', 'MixID' ]);
+		});
+
+		test('_recordDescriptor falls back to "Entity #id" (muted) when the title field is empty', () =>
+		{
+			const tmp = newExplorer();
+			const tmpEntityConfig = { Entity: 'PayItem', IDField: 'IDPayItem', Display: { Title: 'Description' }, Lite: [] };
+			const tmpBlank = tmp.View._recordDescriptor('k1', { Kind: 'record', Entity: 'PayItem', Record: { IDPayItem: 51090, Description: '' }, EntityConfig: tmpEntityConfig });
+			Expect(tmpBlank.Title).to.equal('PayItem #51090');
+			Expect(tmpBlank.TitleClass).to.equal('pdex-title-fallback');
+			const tmpNamed = tmp.View._recordDescriptor('k2', { Kind: 'record', Entity: 'PayItem', Record: { IDPayItem: 1, Description: 'Water Main' }, EntityConfig: tmpEntityConfig });
+			Expect(tmpNamed.Title).to.equal('Water Main');
+			Expect(tmpNamed.TitleClass).to.equal('');
+		});
+
+		test('schema-aware chooser offers the FULL column set (minus keys/system/title); _effectiveLite adds chosen extras', () =>
+		{
+			const tmp = newExplorer();
+			// A stubbed schema source (JSON-schema shape) standing in for the host's `<Entity>/Schema`.
+			tmp.View.SchemaSource = (pEntity, fCB) => fCB(null, { properties: { IDPayItem: {}, GUIDPayItem: {}, CreateDate: {}, Deleted: {}, Description: {}, Name: {}, Units: {}, ItemCode: {} } });
+			const tmpConfig = { Entity: 'PayItem', IDField: 'IDPayItem', Display: { Title: 'Description' }, Lite: [ 'Description', 'ItemCode' ] };
+			// Before the schema loads the chooser shows only the Lite columns (minus title).
+			Expect(tmp.View._chipEligibleColumns(tmpConfig, 'PayItem')).to.deep.equal([ 'ItemCode' ]);
+			let tmpLoaded = null;
+			tmp.View._ensureSchemaColumns('PayItem', (pDidLoad) => { tmpLoaded = pDidLoad; });
+			Expect(tmpLoaded).to.equal(true);
+			// After: every schema column except ID*/GUID*, the system/audit columns, and the title (Description).
+			Expect(tmp.View._chipEligibleColumns(tmpConfig, 'PayItem')).to.deep.equal([ 'Name', 'Units', 'ItemCode' ]);
+			// A chosen non-Lite column is added to the fetch projection.
+			tmp.View._setChosenColumns('PayItem', [ 'Name' ]);
+			Expect(tmp.View._effectiveLite({ Entity: 'PayItem', EntityConfig: tmpConfig })).to.include.members([ 'Description', 'ItemCode', 'Name' ]);
+			tmp.View._setChosenColumns('PayItem', []);
+		});
+
+		test('ColumnBlacklist (per-entity + global) removes columns from the chooser', () =>
+		{
+			const tmp = newExplorer();
+			tmp.View._schemaColumnCache = { PayItem: [ 'IDPayItem', 'Description', 'Name', 'Units', 'ItemCode', 'ExtendedJSON' ] };
+			const tmpConfig = { Entity: 'PayItem', Display: { Title: 'Description' }, Lite: [], ColumnBlacklist: [ 'ExtendedJSON' ] };
+			Expect(tmp.View._chipEligibleColumns(tmpConfig, 'PayItem')).to.deep.equal([ 'Name', 'Units', 'ItemCode' ]);
+			tmp.View.explorerConfig.ColumnBlacklist = [ 'Units' ];   // global blacklist stacks on the per-entity one
+			Expect(tmp.View._chipEligibleColumns(tmpConfig, 'PayItem')).to.deep.equal([ 'Name', 'ItemCode' ]);
+		});
 	}
 );

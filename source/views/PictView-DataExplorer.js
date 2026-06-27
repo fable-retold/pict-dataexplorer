@@ -1,5 +1,9 @@
 const libPictView = require('pict-view');
 
+// Meadow's standard audit/system columns — never offered in the column chooser (they are noise as chips and
+// already surface in the ⓘ card's audit stripe). The opaque ID / GUID keys are filtered separately by regex.
+const _SYSTEM_COLUMNS = [ 'CreateDate', 'CreatingIDUser', 'UpdateDate', 'UpdatingIDUser', 'Deleted', 'DeleteDate', 'DeletingIDUser' ];
+
 const _ExplorerCSS = /*css*/`
 .pdex { font-size: 0.92rem; color: var(--theme-color-text-primary, #1f2733); }
 .pdex *, .pdex *::before, .pdex *::after { box-sizing: border-box; }
@@ -14,6 +18,7 @@ const _ExplorerCSS = /*css*/`
 .pdex-count { flex: 0 0 auto; font-size: 0.76rem; font-weight: 600; color: var(--theme-color-text-muted, #6b7686);
 	background: var(--theme-color-background-tertiary, #eef1f5); border-radius: 10px; padding: 0.02rem 0.45rem; }
 .pdex-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdex-title-fallback { opacity: 0.5; font-style: italic; font-weight: 400; }
 .pdex-subtitle { flex: 1 1 auto; min-width: 0; font-size: 0.82rem; color: var(--theme-color-text-muted, #6b7686); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pdex-loadmore { display: inline-block; margin: 0.2rem 0.4rem; padding: 0.25rem 0.6rem; font-size: 0.82rem; cursor: pointer; border-radius: 6px;
 	color: var(--theme-color-brand-primary, #156dd1); }
@@ -87,7 +92,7 @@ const _DEFAULT_CONFIGURATION =
 		},
 		{
 			Hash: 'PDEX-Record-Inner',
-			Template: /*html*/`<div class="pdex-row pdex-row-record" onclick="_Pict.views['{~D:Record.ViewHash~}'].toggleNode('{~D:Record.NodeKey~}')">{~TS:PDEX-Caret-Down:Record.ExpandedSlot~}{~TS:PDEX-Caret-Right:Record.CollapsedSlot~}{~TS:PDEX-Caret-None:Record.NoCaretSlot~}<span class="pdex-title">{~D:Record.Title~}</span>{~TS:PDEX-Card-Trigger:Record.CardSlot~}<span class="pdex-chips">{~TS:PDEX-Chip:Record.ChipsSlot~}</span><span class="pdex-subtitle">{~D:Record.Subtitle~}</span></div><div class="pdex-children" id="{~D:Record.ChildrenDOMID~}"></div>`,
+			Template: /*html*/`<div class="pdex-row pdex-row-record" onclick="_Pict.views['{~D:Record.ViewHash~}'].toggleNode('{~D:Record.NodeKey~}')">{~TS:PDEX-Caret-Down:Record.ExpandedSlot~}{~TS:PDEX-Caret-Right:Record.CollapsedSlot~}{~TS:PDEX-Caret-None:Record.NoCaretSlot~}<span class="pdex-title {~D:Record.TitleClass~}">{~D:Record.Title~}</span>{~TS:PDEX-Card-Trigger:Record.CardSlot~}<span class="pdex-chips">{~TS:PDEX-Chip:Record.ChipsSlot~}</span><span class="pdex-subtitle">{~D:Record.Subtitle~}</span></div><div class="pdex-children" id="{~D:Record.ChildrenDOMID~}"></div>`,
 		},
 		{
 			// A folder's member list (record nodes) + a "Load more" + an empty-state.
@@ -224,6 +229,13 @@ class PictViewDataExplorer extends libPictView
 		this._renderInner(pKey);
 		if (!tmpNode.Expanded) { return; }
 
+		// Lazily discover the entity's full column list so the "Columns" chooser can offer every column (not just
+		// the pre-fetched Lite); repaint the toolbar once it arrives.
+		if (tmpNode.Kind === 'folder')
+		{
+			this._ensureSchemaColumns(tmpNode.Entity, (pLoaded) => { if (pLoaded && tmpNode.Expanded) { this._renderInner(pKey); } });
+		}
+
 		if (tmpNode.Loaded) { return this.renderChildren(pKey); }
 
 		// First expand → load this node's children, showing a transient "Loading…".
@@ -351,6 +363,7 @@ class PictViewDataExplorer extends libPictView
 		{
 			const tmpRootConfig = Object.assign({}, pNode.EntityConfig,
 				{
+					Lite: this._effectiveLite(pNode),
 					Filter: pNode.RootFilter || pNode.EntityConfig.Filter,
 					Sort: this._effectiveSortField(pNode) || undefined,
 					SortDirection: this._effectiveSortDir(pNode),
@@ -361,6 +374,7 @@ class PictViewDataExplorer extends libPictView
 		// substring clause with the relationship FK + base filters, and sorts the page.
 		const tmpChildConfig = Object.assign({}, pNode.EntityConfig,
 			{
+				Lite: this._effectiveLite(pNode),
 				Filter: [ pNode.EntityConfig.Filter, this._filterExpression(pNode) ].filter((pPart) => (pPart && String(pPart).length > 0)).join('~') || undefined,
 				Sort: this._effectiveSortField(pNode) || undefined,
 				SortDirection: this._effectiveSortDir(pNode),
@@ -480,7 +494,7 @@ class PictViewDataExplorer extends libPictView
 		const tmpSortColumns = this._sortOptions(tmpEntityConfig);
 		const tmpEffectiveSort = this._effectiveSortField(pNode);
 		const tmpEffectiveDir = this._effectiveSortDir(pNode);
-		const tmpChipColumns = this._chipEligibleColumns(tmpEntityConfig);
+		const tmpChipColumns = this._chipEligibleColumns(tmpEntityConfig, pNode.Entity);
 		const tmpChosenColumns = this._chosenColumns(pNode.Entity);
 		return {
 			ViewHash: this.Hash, NodeKey: pKey, Label: pNode.Label || pNode.Entity,
@@ -500,12 +514,69 @@ class PictViewDataExplorer extends libPictView
 		};
 	}
 
-	/** The columns a tier can light up as chips — its Lite columns, minus the opaque ID / GUID keys + the title. */
-	_chipEligibleColumns(pEntityConfig)
+	/**
+	 * The columns a tier offers in its "Columns" chooser. Prefers the entity's FULL schema column list (so any
+	 * column can be lit up, not just the pre-fetched Lite), falling back to the Lite projection until the schema
+	 * has loaded — or when no schema source is wired. Always drops the opaque ID / GUID keys, the standard
+	 * system/audit columns, and the field already shown as the row title.
+	 */
+	_chipEligibleColumns(pEntityConfig, pEntity)
 	{
-		const tmpLite = (pEntityConfig && Array.isArray(pEntityConfig.Lite)) ? pEntityConfig.Lite : [];
 		const tmpTitle = (pEntityConfig && pEntityConfig.Display && pEntityConfig.Display.Title) || '';
-		return tmpLite.filter((pColumn) => !(/^(ID|GUID)/.test(pColumn)) && (pColumn !== tmpTitle));
+		const tmpSchemaColumns = this._schemaColumnCache && this._schemaColumnCache[pEntity];
+		const tmpColumns = Array.isArray(tmpSchemaColumns) ? tmpSchemaColumns
+			: ((pEntityConfig && Array.isArray(pEntityConfig.Lite)) ? pEntityConfig.Lite : []);
+		// Host-supplied blacklists remove columns that never make sense as chips (e.g. a big JSON/Text blob): a
+		// global one on the explorer config + a per-entity one, on top of the always-dropped ID / GUID keys, the
+		// system/audit columns, and the row title.
+		const tmpBlacklist = ((this.explorerConfig && Array.isArray(this.explorerConfig.ColumnBlacklist)) ? this.explorerConfig.ColumnBlacklist : [])
+			.concat((pEntityConfig && Array.isArray(pEntityConfig.ColumnBlacklist)) ? pEntityConfig.ColumnBlacklist : []);
+		return tmpColumns.filter((pColumn) =>
+			!(/^(ID|GUID)/.test(pColumn)) && (pColumn !== tmpTitle) && (_SYSTEM_COLUMNS.indexOf(pColumn) < 0) && (tmpBlacklist.indexOf(pColumn) < 0));
+	}
+
+	/** The schema source used to discover an entity's full column list: the view's own, else the (soft-dep) card manager's. */
+	_schemaSource()
+	{
+		if (typeof this.SchemaSource === 'function') { return this.SchemaSource; }
+		const tmpCardManager = this.pict.providers.RecordSetCardManager;
+		return (tmpCardManager && (typeof tmpCardManager.SchemaSource === 'function')) ? tmpCardManager.SchemaSource : null;
+	}
+
+	/** Column names from a fetched schema — JSON-schema (`properties`), Stricture (`Columns`), or a plain array. */
+	_columnsFromSchema(pSchema)
+	{
+		if (pSchema && pSchema.properties && (typeof pSchema.properties === 'object')) { return Object.keys(pSchema.properties); }
+		if (pSchema && Array.isArray(pSchema.Columns)) { return pSchema.Columns.map((pCol) => pCol.Column || pCol.column).filter(Boolean); }
+		if (Array.isArray(pSchema)) { return pSchema.map((pCol) => (typeof pCol === 'string') ? pCol : (pCol && (pCol.Column || pCol.column))).filter(Boolean); }
+		return [];
+	}
+
+	/** Lazily fetch + cache an entity's full column list. Calls back(true) only when this call populated the cache. */
+	_ensureSchemaColumns(pEntity, fCallback)
+	{
+		if (!this._schemaColumnCache) { this._schemaColumnCache = {}; }
+		if (Array.isArray(this._schemaColumnCache[pEntity])) { return fCallback(false); }
+		const tmpSource = this._schemaSource();
+		if (!tmpSource) { return fCallback(false); }
+		if (!this._schemaPending) { this._schemaPending = {}; }
+		if (this._schemaPending[pEntity]) { return fCallback(false); }
+		this._schemaPending[pEntity] = true;
+		tmpSource(pEntity, (pError, pSchema) =>
+		{
+			this._schemaPending[pEntity] = false;
+			if (pError || !pSchema) { return fCallback(false); }
+			this._schemaColumnCache[pEntity] = this._columnsFromSchema(pSchema);
+			return fCallback(true);
+		});
+	}
+
+	/** The projection a tier fetches: its Lite columns plus any chooser columns the user has turned on. */
+	_effectiveLite(pNode)
+	{
+		const tmpLite = (pNode.EntityConfig && Array.isArray(pNode.EntityConfig.Lite)) ? pNode.EntityConfig.Lite.slice() : [];
+		this._chosenColumns(pNode.Entity).forEach((pColumn) => { if (tmpLite.indexOf(pColumn) < 0) { tmpLite.push(pColumn); } });
+		return tmpLite;
 	}
 
 	/** localStorage key for an entity's chosen chip columns (per-entity, so it persists across visits). */
@@ -541,19 +612,29 @@ class PictViewDataExplorer extends libPictView
 		catch (pError) { /* private mode / no storage — chips persist for the session only */ }
 	}
 
-	/** Toggle a chip column for an entity (persist) + repaint every loaded tier of that entity. */
+	/**
+	 * Toggle a chooser column for an entity (persist) + refresh every loaded tier of that entity. Turning ON a
+	 * column the Lite projection doesn't already fetch reloads those tiers so the new column's data arrives;
+	 * otherwise it just repaints the chips.
+	 */
 	toggleColumn(pEntity, pColumn)
 	{
 		const tmpChosen = this._chosenColumns(pEntity);
 		const tmpIndex = tmpChosen.indexOf(pColumn);
+		const tmpAdding = (tmpIndex < 0);
 		if (tmpIndex >= 0) { tmpChosen.splice(tmpIndex, 1); }
 		else { tmpChosen.push(pColumn); }
 		this._setChosenColumns(pEntity, tmpChosen);
+		const tmpEntityConfig = this.explorerConfig.Entities[pEntity] || {};
+		const tmpBaseLite = Array.isArray(tmpEntityConfig.Lite) ? tmpEntityConfig.Lite : [];
+		const tmpNeedsFetch = tmpAdding && (tmpBaseLite.indexOf(pColumn) < 0);
 		const tmpNodes = this._state().Nodes;
 		Object.keys(tmpNodes).forEach((pKey) =>
 		{
 			const tmpNode = tmpNodes[pKey];
-			if (tmpNode && (tmpNode.Kind === 'folder') && (tmpNode.Entity === pEntity) && tmpNode.Expanded && tmpNode.Loaded) { this.renderChildren(pKey); }
+			if (!tmpNode || (tmpNode.Kind !== 'folder') || (tmpNode.Entity !== pEntity) || !tmpNode.Expanded || !tmpNode.Loaded) { return; }
+			if (tmpNeedsFetch) { this._reloadFolderMembers(pKey, tmpNode); }
+			else { this.renderChildren(pKey); }
 		});
 	}
 
@@ -587,10 +668,15 @@ class PictViewDataExplorer extends libPictView
 		const tmpEntityConfig = pNode.EntityConfig || {};
 		const tmpFields = Array.isArray(tmpEntityConfig.SearchFields) ? tmpEntityConfig.SearchFields : [];
 		if ((tmpText.length < 1) || (tmpFields.length < 1)) { return ''; }
-		// One LK clause on the primary search field — an FBV so it ANDs cleanly with relationship / base
-		// filters. The `%` wildcards are RAW: the EntityProvider URL-encodes the whole filter when it builds
-		// the request, so pre-encoding here would double-encode and the LIKE would match the literal `%25`.
-		return `FBV~${tmpFields[0]}~LK~%${tmpText}%`;
+		// RAW `%` wildcards: the EntityProvider URL-encodes the whole filter when it builds the request, so
+		// pre-encoding here would double-encode and the LIKE would match the literal `%25`.
+		const tmpLike = `%${tmpText}%`;
+		// One field → a plain FBV LK. Multiple fields → a parenthesized OR group: FoxHound's FBVOR ORs ALL
+		// prior clauses, so an ungrouped chain would OR away a child tier's relationship FK. The FOP…FCP
+		// group keeps the OR self-contained so it ANDs cleanly with the relationship / base filters.
+		if (tmpFields.length === 1) { return `FBV~${tmpFields[0]}~LK~${tmpLike}`; }
+		const tmpClauses = tmpFields.map((pField, pIndex) => `${(pIndex === 0) ? 'FBV' : 'FBVOR'}~${pField}~LK~${tmpLike}`).join('~');
+		return `FOP~~(~~${tmpClauses}~FCP~~)~`;
 	}
 
 	_recordDescriptor(pKey, pNode)
@@ -602,11 +688,22 @@ class PictViewDataExplorer extends libPictView
 		const tmpChips = tmpChosen
 			.filter((pColumn) => pNode.Record && (pNode.Record[pColumn] !== undefined) && (pNode.Record[pColumn] !== null) && (String(pNode.Record[pColumn]) !== ''))
 			.map((pColumn) => ({ Column: pColumn, Value: String(pNode.Record[pColumn]) }));
+		// Resolve the display title; when the title field is empty (sparse data) fall back to a record
+		// identifier (`Entity #id`) so a row never renders blank — a blank row reads as broken software.
+		let tmpTitle = this._resolveDisplay(pNode.EntityConfig.Display && pNode.EntityConfig.Display.Title, pNode.Record);
+		let tmpTitleClass = '';
+		if (String(tmpTitle).trim() === '')
+		{
+			const tmpIDValue = (pNode.Record && (pNode.Record[pNode.EntityConfig.IDField] != null)) ? pNode.Record[pNode.EntityConfig.IDField] : '';
+			tmpTitle = (tmpIDValue !== '') ? `${pNode.Entity} #${tmpIDValue}` : `(untitled ${pNode.Entity})`;
+			tmpTitleClass = 'pdex-title-fallback';
+		}
 		const tmpDescriptor = Object.assign(
 			{
 				ViewHash: this.Hash, NodeKey: pKey,
 				NodeDOMID: this._domID('PDEX-Node', pKey), ChildrenDOMID: this._domID('PDEX-Children', pKey),
-				Title: this._resolveDisplay(pNode.EntityConfig.Display && pNode.EntityConfig.Display.Title, pNode.Record),
+				Title: tmpTitle,
+				TitleClass: tmpTitleClass,
 				Subtitle: this._resolveDisplay(pNode.EntityConfig.Display && pNode.EntityConfig.Display.Subtitle, pNode.Record),
 				CardSlot: tmpHasCard ? [ { ViewHash: this.Hash, NodeKey: pKey } ] : [],
 				ChipsSlot: tmpChips,

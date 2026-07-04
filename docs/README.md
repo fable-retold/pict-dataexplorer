@@ -1,6 +1,6 @@
 # Pict-DataExplorer
 
-A config-driven, hierarchical **"folders"** data explorer for the [Pict](https://github.com/stevenvelozo/pict) application framework. Browse a relational dataset as an expandable tree: a list of root records — Projects, Stores, Artists — where expanding a record reveals its child collections ("Users (5)", "Media (10)", "Documents (3)"), each expandable to paginated child records, and each record carrying a preview-card popout. Drive the whole thing from a single config graph of entity endpoints and relationships.
+A config-driven, hierarchical **"folders"** data explorer for the [Pict](https://github.com/fable-retold/pict) application framework. Browse a relational dataset as an expandable tree: a list of root records — Projects, Stores, Artists — where expanding a record reveals its child collections ("Users (5)", "Media (10)", "Documents (3)"), each expandable to paginated child records, and each record carrying a preview-card popout. Drive the whole thing from a single config graph of entity endpoints and relationships.
 
 ## What It Does
 
@@ -8,7 +8,7 @@ Pict-DataExplorer turns a relational dataset into a navigable folder tree, drive
 
 - **Expand records into their related collections** — open a Store to see its Catalog, Employees and Sales; open an Employee to see its User; open a Sale to see its Items, each Item its Book.
 - **Three relationship kinds, declaratively** — one-to-many (`Filter`), many-to-many through a join entity (`Join`), and belongs-to single references (`Reference`).
-- **Resolve from anywhere** — natively from [meadow-endpoints](https://github.com/stevenvelozo/meadow-endpoints) (paginated, `LiteExtended` column projection, `FilteredTo`, `Count`) through the host's `pict.EntityProvider`, or from a host-supplied custom `Resolver` function (a data lake, a cursor API, or an in-memory dataset — no backend required).
+- **Resolve from anywhere** — natively from [meadow-endpoints](https://github.com/fable-retold/meadow-endpoints) (paginated, `LiteExtended` column projection, `FilteredTo`, `Count`) through the host's `pict.EntityProvider`, or from a host-supplied custom `Resolver` function (a data lake, a cursor API, or an in-memory dataset — no backend required).
 - **Preview-card popouts on every node** — a soft dependency on [pict-section-recordset](https://github.com/fable-retold/pict-section-recordset)'s `RecordSetCardManager`. Present → a clickable ⓘ card on each record; absent → plain text.
 - **Lazy by default** — a record's child-folder counts resolve only when that record is expanded, and member records page in on demand, so a tree over hundreds of thousands of rows stays cheap.
 
@@ -78,9 +78,9 @@ pict.views['MyExplorer'].renderExplorer();
 
 Pict-DataExplorer is part of the [Retold](https://github.com/fable-retold) ecosystem and builds on:
 
-- [pict](https://github.com/stevenvelozo/pict) — the MVC application framework (views, providers, the EntityProvider).
+- [pict](https://github.com/fable-retold/pict) — the MVC application framework (views, providers, the EntityProvider).
 - [pict-section-recordset](https://github.com/fable-retold/pict-section-recordset) — the optional `RecordSetCardManager` that powers the preview-card popouts.
-- [meadow-endpoints](https://github.com/stevenvelozo/meadow-endpoints) — the REST read conventions the default resolver speaks.
+- [meadow-endpoints](https://github.com/fable-retold/meadow-endpoints) — the REST read conventions the default resolver speaks.
 
 ## License
 

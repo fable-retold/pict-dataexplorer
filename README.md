@@ -4,13 +4,13 @@
 
 [pict-dataexplorer on npm](https://www.npmjs.com/package/pict-dataexplorer) | [MIT License](LICENSE)
 
-A config-driven, hierarchical **"folders"** data explorer for the [Pict](https://github.com/stevenvelozo/pict) application framework. Browse a relational dataset as an expandable tree: a list of root records where expanding a record reveals its child collections — *"Users (5)", "Media (10)", "Documents (3)"* — each expandable to paginated child records, and each record carrying a preview-card popout. Drive the whole thing from a single config graph of entity endpoints and relationships.
+A config-driven, hierarchical **"folders"** data explorer for the [Pict](https://github.com/fable-retold/pict) application framework. Browse a relational dataset as an expandable tree: a list of root records where expanding a record reveals its child collections — *"Users (5)", "Media (10)", "Documents (3)"* — each expandable to paginated child records, and each record carrying a preview-card popout. Drive the whole thing from a single config graph of entity endpoints and relationships.
 
 ## Features
 
 - **Hierarchical folder tree** — expand a record to see its related collections, drill each collection to its records, recursively.
 - **Three relationship kinds, declaratively** — one-to-many (`Filter`), many-to-many through a join entity (`Join`), and belongs-to single references (`Reference`).
-- **Resolve from anywhere** — natively from [meadow-endpoints](https://github.com/stevenvelozo/meadow-endpoints) (paginated, `LiteExtended` column projection, `FilteredTo`, `Count`) via `pict.EntityProvider`, or from a host-supplied custom `Resolver` for any source — including an in-memory dataset with no backend at all.
+- **Resolve from anywhere** — natively from [meadow-endpoints](https://github.com/fable-retold/meadow-endpoints) (paginated, `LiteExtended` column projection, `FilteredTo`, `Count`) via `pict.EntityProvider`, or from a host-supplied custom `Resolver` for any source — including an in-memory dataset with no backend at all.
 - **Soft preview cards** — an opt-in dependency on [pict-section-recordset](https://github.com/fable-retold/pict-section-recordset)'s `RecordSetCardManager`; present → a clickable ⓘ card on each record, absent → plain text.
 - **Lazy by default** — child counts resolve only when a record is expanded, and members page in on demand, so a tree over hundreds of thousands of rows stays cheap.
 
@@ -91,9 +91,9 @@ Full documentation lives at **[fable-retold.github.io/pict-dataexplorer](https:/
 
 ## Related Packages
 
-- [pict](https://github.com/stevenvelozo/pict) — the MVC application framework.
+- [pict](https://github.com/fable-retold/pict) — the MVC application framework.
 - [pict-section-recordset](https://github.com/fable-retold/pict-section-recordset) — the optional preview-card manager.
-- [meadow-endpoints](https://github.com/stevenvelozo/meadow-endpoints) — the REST read conventions the default resolver speaks.
+- [meadow-endpoints](https://github.com/fable-retold/meadow-endpoints) — the REST read conventions the default resolver speaks.
 
 ## License
 

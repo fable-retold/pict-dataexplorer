@@ -4,8 +4,8 @@ This walkthrough takes you from an empty page to a working, drillable data explo
 
 ## Step 1: Prerequisites
 
-- Node.js 16+ and a [Pict](https://github.com/stevenvelozo/pict) application (or a plain `pict` instance).
-- A data source. The default resolver speaks [meadow-endpoints](https://github.com/stevenvelozo/meadow-endpoints) through `pict.EntityProvider`, but you can supply your own `Resolver` for any source — see [Step 7](#step-7-resolve-from-anything-no-backend).
+- Node.js 16+ and a [Pict](https://github.com/fable-retold/pict) application (or a plain `pict` instance).
+- A data source. The default resolver speaks [meadow-endpoints](https://github.com/fable-retold/meadow-endpoints) through `pict.EntityProvider`, but you can supply your own `Resolver` for any source — see [Step 7](#step-7-resolve-from-anything-no-backend).
 
 ## Step 2: Install
 

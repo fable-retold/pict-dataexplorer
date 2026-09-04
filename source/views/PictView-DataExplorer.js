@@ -785,9 +785,12 @@ class PictViewDataExplorer extends libPictView
 		const tmpEntityConfig = pNode.EntityConfig || {};
 		const tmpFields = Array.isArray(tmpEntityConfig.SearchFields) ? tmpEntityConfig.SearchFields : [];
 		if ((tmpText.length < 1) || (tmpFields.length < 1)) { return ''; }
-		// RAW `%` wildcards: the EntityProvider URL-encodes the whole filter when it builds the request, so
-		// pre-encoding here would double-encode and the LIKE would match the literal `%25`.
-		const tmpLike = `%${tmpText}%`;
+		// URL-ENCODED `%` wildcards: the EntityProvider embeds the filter stanza VERBATIM into the request
+		// (the legacy GET `/<Entity>s/.../FilteredTo/<filter>/...` path and the POST /Query body alike — it
+		// does NOT url-encode it), so a raw `%te…` is a malformed percent-escape that gets thrown out and the
+		// load never resolves. Pre-encode the value exactly as the sibling searchers pict-section-picker
+		// (buildSearchFilter) and pict-section-recordset already do; the server decodes `%25foo%25` → `%foo%`.
+		const tmpLike = encodeURIComponent(`%${tmpText}%`);
 		// One field → a plain FBV LK. Multiple fields → a parenthesized OR group: FoxHound's FBVOR ORs ALL
 		// prior clauses, so an ungrouped chain would OR away a child tier's relationship FK. The FOP…FCP
 		// group keeps the OR self-contained so it ANDs cleanly with the relationship / base filters.

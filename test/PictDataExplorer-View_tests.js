@@ -156,7 +156,7 @@ suite
 			tmp.View.toggleNode('root:Book');
 			tmp.View.setTierFilter('root:Book', 'war');
 			Expect(tmp.View._node('root:Book').UserFilter).to.equal('war');
-			Expect(tmpCapturedFilter).to.equal('FBV~Title~LK~%war%');   // raw % — the EntityProvider encodes the URL
+			Expect(tmpCapturedFilter).to.equal('FBV~Title~LK~%25war%25');   // %-wildcards url-encoded — the EntityProvider embeds the filter verbatim
 			Expect(tmp.View._node('root:Book').MemberKeys).to.deep.equal([ 'root:Book/rec:3' ]);
 		});
 
@@ -219,9 +219,9 @@ suite
 		{
 			const tmp = newExplorer();
 			Expect(tmp.View._filterExpression({ UserFilter: 'x', EntityConfig: { SearchFields: [ 'Name' ] } }))
-				.to.equal('FBV~Name~LK~%x%');
+				.to.equal('FBV~Name~LK~%25x%25');
 			Expect(tmp.View._filterExpression({ UserFilter: '350', EntityConfig: { SearchFields: [ 'Name', 'MaterialCode', 'MixID' ] } }))
-				.to.equal('FOP~~(~~FBV~Name~LK~%350%~FBVOR~MaterialCode~LK~%350%~FBVOR~MixID~LK~%350%~FCP~~)~');
+				.to.equal('FOP~~(~~FBV~Name~LK~%25350%25~FBVOR~MaterialCode~LK~%25350%25~FBVOR~MixID~LK~%25350%25~FCP~~)~');
 		});
 
 		test('multi-Lite entities get multi-field SearchFields (name first), single-Lite stays single', () =>
